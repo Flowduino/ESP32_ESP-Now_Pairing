@@ -55,14 +55,6 @@ inline ButtonState getButtonState() {
   return digitalRead(PIN_BUTTON) == HIGH ? ButtonDown : ButtonUp;
 }
 
-inline void startDiscovering() {
-  // This method will switch on BLE and set it up to broadcast the WiFi Mac Address
-}
-
-inline void stopDiscovering() {
-  // This method will switch off BLE.
-}
-
 unsigned long nextFlash; // This will hold the millis() value of our next Flash
 #define INTERVAL_FLASH  500 // This is our Flash Interval (500ms, 0.5 seconds)
 
@@ -131,7 +123,6 @@ inline void loopWaiting() {
     setRedLED(false);
     discoveryStart = millis();
     buttonHoldStart = discoveryStart;
-    startDiscovering();
   }
 }
 
@@ -165,7 +156,7 @@ inline bool connectToDevice() {
 
   uint8_t mac[6];
   char macStr[18] = { 0 };
-  const char* rawData = pRemoteCharacteristic->readValue().c_str();//pRemoteCharacteristic->readRawData();
+  const char* rawData = pRemoteCharacteristic->readValue().c_str();
   
   sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X", rawData[0], rawData[1], rawData[2], rawData[3], rawData[4], rawData[5]);
   
@@ -219,14 +210,12 @@ inline void loopDiscovering() {
     setRedLED(true);
     digitalWrite(PIN_LED_BLUE, LOW); // Ensure Blue LED is OFF
     buttonHoldStart = millis();
-    stopDiscovering();
   }
 }
 
 // The Loop routine when our Device is in Discovered Mode
 inline void loopDiscovered() {
   if (discoveredAt == 0) {
-    stopDiscovering();
     discoveredAt = millis();
     return;
   }
