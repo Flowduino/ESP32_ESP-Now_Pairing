@@ -6,10 +6,10 @@
 
 // We use an Enum to define the Mode of our Device
 enum DeviceMode {
-  Waiting, // Not pairing, not timed out
-  Pairing, // We're in Pairing mode
-  Paired,  // Pairing Succeeded
-  Failed,  // Pairing Failed (Timed Out)
+  Waiting, // Not discovering, not timed out
+  Discovering, // We're in Discovery mode
+  Discovered,  // Discovery Succeeded
+  Failed,  // Discovery Failed (Timed Out)
 };
 
 DeviceMode deviceMode = Waiting; // We are initially Waiting
@@ -39,7 +39,7 @@ BLEService *bleService;
 BLECharacteristic *bleCharacteristic;
 BLEAdvertising *bleAdvertising;
 bool bleClientConnected = false;
-unsigned long pairedAt;
+unsigned long discoveredAt;
 
 class BLECallbacks: public BLEServerCallbacks {
    void onConnect(BLEServer* pServer) {
@@ -51,14 +51,14 @@ class BLECallbacks: public BLEServerCallbacks {
     void onDisconnect(BLEServer* pServer) {
       Serial.println("BLE Client Disconnected!");
       bleClientConnected = false;
-      deviceMode = Paired;
-      pairedAt = 0;
+      deviceMode = Discovered;
+      discoveredAt = 0;
     } 
 };
 
-inline void startPairing() {
+inline void startDiscovering() {
   if (bleServer == nullptr) {
-    Serial.println("First Time Pairing");
+    Serial.println("First Time Discovering");
     // Get the MAC Address
     WiFi.mode(WIFI_MODE_STA);
     uint8_t mac[6];
@@ -99,7 +99,7 @@ inline void startPairing() {
   BLEDevice::startAdvertising();
 }
 
-inline void stopPairing() {
+inline void stopDiscovering() {
   BLEDevice::stopAdvertising();
   bleService->stop();
   Serial.println("Stopped BLE");
@@ -137,8 +137,8 @@ void setup() {
 
 unsigned long buttonHoldStart; // The millis() value of the initial Button push down
 #define BUTTON_HOLD_TIME  3000 // The number of millis for which we must hold the button
-unsigned long pairingStart; // The millis() value at which Pairing started
-#define PAIRING_TIMEOUT   30000 // 30 seconds in milliseconds for Timeout
+unsigned long discoveryStart; // The millis() value at which Discovery started
+#define DISCOVERY_TIMEOUT   30000 // 30 seconds in milliseconds for Timeout
 
 // The Loop routine when our Device is in Waiting Mode
 inline void loopWaiting() {
@@ -161,18 +161,18 @@ inline void loopWaiting() {
 
   // Held Down
   if (buttonState == ButtonDown && currentState == ButtonDown && millis() > buttonHoldStart + BUTTON_HOLD_TIME) {
-    // We now initiate Pairing!
-    Serial.println("Initiating Pairing");
-    deviceMode = Pairing;
+    // We now initiate Discovery!
+    Serial.println("Initiating Discovery");
+    deviceMode = Discovering;
     setRedLED(false);
-    pairingStart = millis();
-    buttonHoldStart = pairingStart;
-    startPairing();
+    discoveryStart = millis();
+    buttonHoldStart = discoveryStart;
+    startDiscovering();
   }
 }
 
-// The Loop routine when our Device is in Pairing Mode
-inline void loopPairing() {
+// The Loop routine when our Device is in Discovery Mode
+inline void loopDiscovering() {
   if (bleClientConnected) { return; }
   flashBlueLED();
 
@@ -196,27 +196,27 @@ inline void loopPairing() {
   // Held Down OR Timed Out
   if (
        (buttonState == ButtonDown && currentState == ButtonDown && millis() > buttonHoldStart + BUTTON_HOLD_TIME) ||
-       (millis() > pairingStart + PAIRING_TIMEOUT)
+       (millis() > discoveryStart + DISCOVERY_TIMEOUT)
      ){
-    // We now initiate Pairing!
-    Serial.println("Cancelling Pairing");
+    // We now initiate Discovery!
+    Serial.println("Cancelling Discovery");
     deviceMode = Waiting;
     setRedLED(true);
     digitalWrite(PIN_LED_BLUE, LOW); // Ensure Blue LED is OFF
     buttonHoldStart = millis();
-    stopPairing();
+    stopDiscovering();
   }
 }
 
-// The Loop routine when our Device is in Paired Mode
-inline void loopPaired() {
-  if (pairedAt == 0) {
-    stopPairing();
-    pairedAt = millis();
+// The Loop routine when our Device is in Discovered Mode
+inline void loopDiscovered() {
+  if (discoveredAt == 0) {
+    stopDiscovering();
+    discoveredAt = millis();
     return;
   }
   
-  if (millis() > pairedAt + BUTTON_HOLD_TIME) {
+  if (millis() > discoveredAt + BUTTON_HOLD_TIME) {
     digitalWrite(PIN_LED_BLUE, LOW);
     deviceMode = Waiting;
     Serial.println("Going back to Waiting mode");
@@ -228,11 +228,11 @@ void loop() {
     case (Waiting):
       loopWaiting();
       break;
-    case (Pairing):
-      loopPairing();
+    case (Discovering):
+      loopDiscovering();
       break;
-    case (Paired):
-      loopPaired();
+    case (Discovered):
+      loopDiscovered();
       break;
   }
 }

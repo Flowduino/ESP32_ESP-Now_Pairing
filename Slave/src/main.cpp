@@ -19,14 +19,14 @@ BLERemoteCharacteristic* pRemoteCharacteristic;
 BLEAdvertisedDevice _advertisedDevice;
 bool deviceFound = false;
 bool clientConnected = false;
-unsigned long pairedAt;
+unsigned long discoveredAt;
 
 // We use an Enum to define the Mode of our Device
 enum DeviceMode {
-  Waiting, // Not pairing, not timed out
-  Pairing, // We're in Pairing mode
-  Paired,  // Pairing Succeeded
-  Failed,  // Pairing Failed (Timed Out)
+  Waiting, // Not Discovering, not timed out
+  Discovering, // We're in Discovering mode
+  Discovered,  // Discovering Succeeded
+  Failed,  // Discovering Failed (Timed Out)
 };
 
 DeviceMode deviceMode = Waiting; // We are initially Waiting
@@ -55,11 +55,11 @@ inline ButtonState getButtonState() {
   return digitalRead(PIN_BUTTON) == HIGH ? ButtonDown : ButtonUp;
 }
 
-inline void startPairing() {
+inline void startDiscovering() {
   // This method will switch on BLE and set it up to broadcast the WiFi Mac Address
 }
 
-inline void stopPairing() {
+inline void stopDiscovering() {
   // This method will switch off BLE.
 }
 
@@ -101,8 +101,8 @@ void setup() {
 
 unsigned long buttonHoldStart; // The millis() value of the initial Button push down
 #define BUTTON_HOLD_TIME  3000 // The number of millis for which we must hold the button
-unsigned long pairingStart; // The millis() value at which Pairing started
-#define PAIRING_TIMEOUT   30000 // 30 seconds in milliseconds for Timeout
+unsigned long discoveryStart; // The millis() value at which Discovering started
+#define DISCOVERY_TIMEOUT   30000 // 30 seconds in milliseconds for Timeout
 
 // The Loop routine when our Device is in Waiting Mode
 inline void loopWaiting() {
@@ -125,13 +125,13 @@ inline void loopWaiting() {
 
   // Held Down
   if (buttonState == ButtonDown && currentState == ButtonDown && millis() > buttonHoldStart + BUTTON_HOLD_TIME) {
-    // We now initiate Pairing!
-    Serial.println("Initiating Pairing");
-    deviceMode = Pairing;
+    // We now initiate Discovering!
+    Serial.println("Initiating Discovering");
+    deviceMode = Discovering;
     setRedLED(false);
-    pairingStart = millis();
-    buttonHoldStart = pairingStart;
-    startPairing();
+    discoveryStart = millis();
+    buttonHoldStart = discoveryStart;
+    startDiscovering();
   }
 }
 
@@ -172,14 +172,14 @@ inline bool connectToDevice() {
   Serial.print("Value is: ");
   Serial.println(String(macStr));
 
-  deviceMode = Paired;
-  pairedAt = millis();
+  deviceMode = Discovered;
+  discoveredAt = millis();
 
   return true;
 }
 
-// The Loop routine when our Device is in Pairing Mode
-inline void loopPairing() {
+// The Loop routine when our Device is in Discovering Mode
+inline void loopDiscovering() {
   flashBlueLED();
 
   // Scan for BLE Devices
@@ -211,27 +211,27 @@ inline void loopPairing() {
   // Held Down OR Timed Out
   if (
        (buttonState == ButtonDown && currentState == ButtonDown && millis() > buttonHoldStart + BUTTON_HOLD_TIME) ||
-       (millis() > pairingStart + PAIRING_TIMEOUT)
+       (millis() > discoveryStart + DISCOVERY_TIMEOUT)
      ){
-    // We now initiate Pairing!
-    Serial.println("Cancelling Pairing");
+    // We now initiate Discovering!
+    Serial.println("Cancelling Discovering");
     deviceMode = Waiting;
     setRedLED(true);
     digitalWrite(PIN_LED_BLUE, LOW); // Ensure Blue LED is OFF
     buttonHoldStart = millis();
-    stopPairing();
+    stopDiscovering();
   }
 }
 
-// The Loop routine when our Device is in Paired Mode
-inline void loopPaired() {
-  if (pairedAt == 0) {
-    stopPairing();
-    pairedAt = millis();
+// The Loop routine when our Device is in Discovered Mode
+inline void loopDiscovered() {
+  if (discoveredAt == 0) {
+    stopDiscovering();
+    discoveredAt = millis();
     return;
   }
   
-  if (millis() > pairedAt + BUTTON_HOLD_TIME) {
+  if (millis() > discoveredAt + BUTTON_HOLD_TIME) {
     digitalWrite(PIN_LED_BLUE, LOW);
     deviceMode = Waiting;
     Serial.println("Going back to Waiting mode");
@@ -243,11 +243,11 @@ void loop() {
     case (Waiting):
       loopWaiting();
       break;
-    case (Pairing):
-      loopPairing();
+    case (Discovering):
+      loopDiscovering();
       break;
-    case (Paired):
-      loopPaired();
+    case (Discovered):
+      loopDiscovered();
       break;
   }
 }
