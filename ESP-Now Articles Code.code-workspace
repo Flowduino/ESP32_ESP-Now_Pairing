@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "Master"
+		},
+		{
+			"name": "Slave",
+			"path": "Slave"
+		}
+	],
+	"settings": {}
+}
