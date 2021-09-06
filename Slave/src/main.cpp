@@ -1,8 +1,25 @@
 #include <Arduino.h>
 
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEScan.h>
+#include <BLEAdvertisedDevice.h>
+
 #define PIN_BUTTON    34 // GPIO34
 #define PIN_LED_RED   23 // GPIO23
 #define PIN_LED_BLUE  22 // GPIO22
+
+#define UUID_SERVICE          "d91fdc86-46f8-478f-8dec-ebdc0a1188b2"
+#define UUID_CHARACTERISTIC   "56100987-749a-4014-bc22-0be2f5af59d0"
+
+BLEScan* pBLEScan;
+BLEClient* pBLEClient;
+BLERemoteService* pRemoteService;
+BLERemoteCharacteristic* pRemoteCharacteristic;
+BLEAdvertisedDevice _advertisedDevice;
+bool deviceFound = false;
+bool clientConnected = false;
+unsigned long pairedAt;
 
 // We use an Enum to define the Mode of our Device
 enum DeviceMode {
@@ -20,6 +37,19 @@ enum ButtonState {
 };
 
 ButtonState buttonState;
+
+class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
+    void onResult(BLEAdvertisedDevice advertisedDevice) {
+      if (clientConnected) { return; };
+      
+      if (advertisedDevice.haveServiceUUID() && advertisedDevice.getServiceUUID().toString() == UUID_SERVICE) {
+        Serial.printf("Advertised Device: %s \n", advertisedDevice.toString().c_str());
+        _advertisedDevice = advertisedDevice;
+        deviceFound = true;
+        return;
+      }
+    }
+};
 
 inline ButtonState getButtonState() {
   return digitalRead(PIN_BUTTON) == HIGH ? ButtonDown : ButtonUp;
@@ -51,6 +81,14 @@ inline void setRedLED(bool ledOn) {
 void setup() {
   // Initialise Serial first
   Serial.begin(115200); // Set Serial Monitor to 115200 baud
+
+  BLEDevice::init("Flowduino Auto-Discovery Demo - Slave");
+
+  pBLEScan = BLEDevice::getScan(); //create new scan
+  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+  pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
+  pBLEScan->setInterval(100);
+  pBLEScan->setWindow(99);  // less or equal setInterval value
 
   // Set our Pin Modes
   pinMode(PIN_BUTTON, INPUT);     // Button Input
@@ -97,9 +135,61 @@ inline void loopWaiting() {
   }
 }
 
+inline bool connectToDevice() {
+  pBLEClient = BLEDevice::createClient();
+  Serial.println("Connecting To \"Flowduino Auto-Discovery Demo - Master\"");
+  clientConnected = pBLEClient->connect(&_advertisedDevice);
+  
+  if (!clientConnected) {
+    Serial.println("Connection Failed!");
+    return false;
+  }
+    
+  Serial.println("Connected... let's get the ESPNow Address!");
+  pRemoteService = pBLEClient->getService(UUID_SERVICE);
+  if (pRemoteService == nullptr) {
+    Serial.println("Unable to get our Service from the Controller!");
+    return false;
+  }
+
+  Serial.println("Service acquired!");
+
+  pRemoteCharacteristic = pRemoteService->getCharacteristic(UUID_CHARACTERISTIC);
+  
+  if (pRemoteCharacteristic == nullptr) {
+    Serial.println("Couldn't get the pRemoteCharacteristic");
+    return false;
+  }
+
+  Serial.println("YAY! We got the pRemoteCharacteristic!");
+
+  uint8_t mac[6];
+  char macStr[18] = { 0 };
+  const char* rawData = pRemoteCharacteristic->readValue().c_str();//pRemoteCharacteristic->readRawData();
+  
+  sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X", rawData[0], rawData[1], rawData[2], rawData[3], rawData[4], rawData[5]);
+  
+  Serial.print("Value is: ");
+  Serial.println(String(macStr));
+
+  deviceMode = Paired;
+  pairedAt = millis();
+
+  return true;
+}
+
 // The Loop routine when our Device is in Pairing Mode
 inline void loopPairing() {
   flashBlueLED();
+
+  // Scan for BLE Devices
+  deviceFound = false;
+  BLEScanResults foundDevices = pBLEScan->start(3, false);
+  pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
+
+  if (deviceFound) {
+    if (connectToDevice()) { return; }
+  }
 
   ButtonState currentState = getButtonState();
 
@@ -135,12 +225,17 @@ inline void loopPairing() {
 
 // The Loop routine when our Device is in Paired Mode
 inline void loopPaired() {
+  if (pairedAt == 0) {
+    stopPairing();
+    pairedAt = millis();
+    return;
+  }
   
-}
-
-// The Loop routine when our Device is in Failed Mode
-inline void loopFailed() {
-  
+  if (millis() > pairedAt + BUTTON_HOLD_TIME) {
+    digitalWrite(PIN_LED_BLUE, LOW);
+    deviceMode = Waiting;
+    Serial.println("Going back to Waiting mode");
+  }
 }
 
 void loop() {
@@ -153,9 +248,6 @@ void loop() {
       break;
     case (Paired):
       loopPaired();
-      break;
-    case (Failed):
-      loopFailed();
       break;
   }
 }

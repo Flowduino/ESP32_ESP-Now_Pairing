@@ -124,7 +124,7 @@ void setup() {
   // Initialise Serial first
   Serial.begin(115200); // Set Serial Monitor to 115200 baud
 
-  BLEDevice::init("Flowduino Auto-Discovery Demo");
+  BLEDevice::init("Flowduino Auto-Discovery Demo - Master");
 
   // Set our Pin Modes
   pinMode(PIN_BUTTON, INPUT);     // Button Input
