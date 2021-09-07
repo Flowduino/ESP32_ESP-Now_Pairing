@@ -25,36 +25,66 @@ inline ButtonState getButtonState() {
   return digitalRead(PIN_BUTTON) == HIGH ? ButtonDown : ButtonUp;
 }
 
-#include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEServer.h>
+#define USE_NIMBLE
+
+#ifdef USE_NIMBLE
+  #include <NimBLEDevice.h>
+#else
+  #include <BLEDevice.h>
+  #include <BLEUtils.h>
+  #include <BLEServer.h>
+#endif
 #include <esp_wifi.h>
 #include <WiFi.h>
 
 #define UUID_SERVICE          "d91fdc86-46f8-478f-8dec-ebdc0a1188b2"
 #define UUID_CHARACTERISTIC   "56100987-749a-4014-bc22-0be2f5af59d0"
 
-BLEServer *bleServer;
-BLEService *bleService;
-BLECharacteristic *bleCharacteristic;
-BLEAdvertising *bleAdvertising;
+#ifdef USE_NIMBLE
+  NimBLEServer *bleServer;
+  NimBLEService *bleService;
+  NimBLECharacteristic *bleCharacteristic;
+  NimBLEAdvertising *bleAdvertising;
+#else
+  BLEServer *bleServer;
+  BLEService *bleService;
+  BLECharacteristic *bleCharacteristic;
+  BLEAdvertising *bleAdvertising;
+#endif
 bool bleClientConnected = false;
 unsigned long discoveredAt;
 
-class BLECallbacks: public BLEServerCallbacks {
-   void onConnect(BLEServer* pServer) {
-      Serial.println("BLE Client Connected!");
-      bleClientConnected = true;
-      digitalWrite(PIN_LED_BLUE, HIGH); // Keep the Blue LED On!
-    };
+#ifdef USE_NIMBLE
+  class BLECallbacks: public NimBLEServerCallbacks {
+    void onConnect(NimBLEServer* pServer) {
+        Serial.println("BLE Client Connected!");
+        bleClientConnected = true;
+        digitalWrite(PIN_LED_BLUE, HIGH); // Keep the Blue LED On!
+      };
 
-    void onDisconnect(BLEServer* pServer) {
-      Serial.println("BLE Client Disconnected!");
-      bleClientConnected = false;
-      deviceMode = Discovered;
-      discoveredAt = 0;
-    } 
-};
+      void onDisconnect(NimBLEServer* pServer) {
+        Serial.println("BLE Client Disconnected!");
+        bleClientConnected = false;
+        deviceMode = Discovered;
+        discoveredAt = 0;
+      } 
+  };
+#else
+  class BLECallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+        Serial.println("BLE Client Connected!");
+        bleClientConnected = true;
+        digitalWrite(PIN_LED_BLUE, HIGH); // Keep the Blue LED On!
+      };
+
+      void onDisconnect(BLEServer* pServer) {
+        Serial.println("BLE Client Disconnected!");
+        bleClientConnected = false;
+        deviceMode = Discovered;
+        discoveredAt = 0;
+      } 
+  };
+#endif
 
 inline void startDiscovering() {
   if (bleServer == nullptr) {
@@ -65,14 +95,22 @@ inline void startDiscovering() {
     esp_wifi_get_mac(WIFI_IF_STA, mac);
 
     // Prepare our BLE Server
-    bleServer = BLEDevice::createServer();
+    #ifdef USE_NIMBLE
+      bleServer = NimBLEDevice::createServer();
+    #else
+      bleServer = BLEDevice::createServer();
+    #endif
     bleServer->setCallbacks(new BLECallbacks());
 
     // Prepare our Service
     bleService = bleServer->createService(UUID_SERVICE);
 
     // A Characteristic is what we shall use to provide Clients/Slaves with our MAC Address.
-    bleCharacteristic = bleService->createCharacteristic(UUID_CHARACTERISTIC, BLECharacteristic::PROPERTY_READ);
+    #ifdef USE_NIMBLE
+      bleCharacteristic = bleService->createCharacteristic(UUID_CHARACTERISTIC, NimBLECharacteristic::PROPERTY_READ);
+    #else
+      bleCharacteristic = bleService->createCharacteristic(UUID_CHARACTERISTIC, BLECharacteristic::PROPERTY_READ);
+    #endif
 
     // Provide our Characteristic with the MAC Address "Payload"
     bleCharacteristic->setValue(&mac[0], 6);
@@ -83,24 +121,41 @@ inline void startDiscovering() {
     bleService->start();
   
     // Advertise it!
-    bleAdvertising = BLEDevice::getAdvertising();
+    #ifdef USE_NIMBLE
+      bleAdvertising = NimBLEDevice::getAdvertising();
+    #else
+      bleAdvertising = BLEDevice::getAdvertising();
+    #endif
     bleAdvertising->addServiceUUID(UUID_SERVICE);
     bleAdvertising->setScanResponse(true);
     bleAdvertising->setMinPreferred(0x06);
     bleAdvertising->setMinPreferred(0x12);
-    BLEDevice::startAdvertising();
+    #ifdef USE_NIMBLE
+      NimBLEDevice::startAdvertising();
+    #else
+      BLEDevice::startAdvertising();
+    #endif
     return;
   }
   // Start the BLE Service
   bleService->start();
 
   // Advertise it!
-  bleAdvertising = BLEDevice::getAdvertising();
-  BLEDevice::startAdvertising();
+  #ifdef USE_NIMBLE
+    bleAdvertising = NimBLEDevice::getAdvertising();
+    NimBLEDevice::startAdvertising();
+  #else
+    bleAdvertising = BLEDevice::getAdvertising();
+    BLEDevice::startAdvertising();
+  #endif
 }
 
 inline void stopDiscovering() {
-  BLEDevice::stopAdvertising();
+  #ifdef USE_NIMBLE
+    NimBLEDevice::stopAdvertising();
+  #else
+    BLEDevice::stopAdvertising();
+  #endif
   bleService->stop();
   Serial.println("Stopped BLE");
 }
@@ -124,7 +179,11 @@ void setup() {
   // Initialise Serial first
   Serial.begin(115200); // Set Serial Monitor to 115200 baud
 
-  BLEDevice::init("Flowduino Auto-Discovery Demo - Master");
+  #ifdef USE_NIMBLE
+    NimBLEDevice::init("Flowduino Auto-Discovery Demo - Master");
+  #else
+    BLEDevice::init("Flowduino Auto-Discovery Demo - Master");
+  #endif
 
   // Set our Pin Modes
   pinMode(PIN_BUTTON, INPUT);     // Button Input
